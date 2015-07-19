@@ -1,0 +1,138 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+author: "Hao Wang"
+output: 
+  html_document:
+    keep_md: true
+---
+
+This is an analysis of the Activity monitoring data as per instructions from [Coursera's Reproducible Research Class](https://github.com/rdpeng/RepData_PeerAssessment1).
+
+```{r setoptions, echo=TRUE}
+```
+
+To start, this reads and processes the data:
+
+```{r loadpackages}
+library(dplyr)
+```
+
+```{r readclean}
+data <- tbl_df(read.csv("./activity.csv"))
+```
+
+#The first question is: **What is the mean total number of steps per day?**
+
+1. Calculate the total number of steps taken per day
+
+```{r meansteps1}
+datadays <- group_by(data, date)
+datadays <- summarise(datadays, steps = sum(steps, na.rm=TRUE))
+print(datadays, n=61)
+```
+
+2. Make a histogram of the total number of steps taken each day
+
+```{r meansteps2}
+hist(datadays$steps)
+```
+
+3. Calculate and report the mean and median of the total number of steps taken per day
+
+```{r meansteps3}
+summary(datadays$steps)
+```
+
+#The second question is: **What is the average daily activity pattern?**
+
+1. Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+```{r timeseries1}
+datainterval <- group_by(data, interval)
+datainterval <- summarise(datainterval, steps = mean(steps, na.rm=TRUE))
+plot(datainterval$interval, datainterval$steps, type = "l")
+```
+
+2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r timeseries2}
+datainterval[which.max(datainterval$steps),]
+```
+
+#The third question deals with **imputing missing values** for NAs.
+
+1. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs).  *The summary() function gives the total number of NAs.*
+
+```{r NA1}
+summary(data)
+```
+
+2-3. Devise a strategy for filling in all of the missing values in the dataset.
+
+```{r NA2}
+library(plyr)
+
+#Joining the step mean by interval table to the larger data
+datajoin <- join(data, datainterval, by = "interval")
+colnames(datajoin)[4] <- "intervalmean"
+
+#creating a new column that takes the interval mean if step value is otherwise NA
+data2 <- mutate(datajoin, steps2 = ifelse(is.na(datajoin$steps)==FALSE, steps, intervalmean))
+
+newdata <- select(data2, steps2, date, interval)
+```
+
+*I am replacing all NA values with interval means, as previously calculated and reconstituting into a table called newdata.*
+
+4. Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day.
+
+```{r NA3}
+detach(package:plyr)
+library(dplyr)
+newdatadays <- group_by(newdata, date)
+newdatadays1 <- summarise(newdatadays, steps2 = sum(steps2, na.rm=TRUE))
+hist(newdatadays1$steps2)
+
+newdatadays <- group_by(newdata, date)
+newdatadays2 <- summarise(newdatadays, meansteps = mean(steps2, na.rm=TRUE), mediansteps = median(steps2, na.rm=TRUE))
+print(newdatadays2, n=61)
+```
+
+#Do these values differ from the estimates from the first part of the assignment?  What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+*In short, substituting does have an impact, and a significant one at that, but only on specific days.  Most of the dates do not have NA values, and therefore the impact is zero.*
+
+
+```{r NA4}
+datajoin <- left_join(datadays, newdatadays1)
+datajoin <- mutate(datajoin, delta = (steps2 - steps))
+plot(datajoin$date, datajoin$delta, main = "Impact on total daily steps by substituting mean interval steps for NA values")
+```
+
+
+#The last question asks: **Are there differences in activity patterns between weekdays and weekends?**
+
+*Yes, at a high level, there are.  On weekdays, the volatility is higher, and on the weekends, activity seems to start a bit later in the day.* 
+
+1. Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date is a weekday or weekend day.
+
+```{r weekends}
+library(lubridate)
+dates1 <- mutate(newdata, date = ymd(date))
+dates1 <- mutate(dates1, day = weekdays(date))
+dates1 <- mutate(dates1, weekday = ifelse(day == "Sunday", "Weekend", ifelse(day == "Saturday", "Weekend", "Weekday")))
+```
+
+2. Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).
+
+```{r weekends2}
+library(ggplot2)
+dates1 <- tbl_df(dates1)
+dates2 <- group_by(dates1, weekday, interval)
+dates3 <- summarise(dates2, meansteps = mean(steps2))
+
+graph <- ggplot(dates3, aes(x=interval, y=meansteps)) + geom_line()
+graph <- graph + facet_grid(. ~ weekday)
+graph
+
+```
